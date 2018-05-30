@@ -1,6 +1,7 @@
 #include<iostream>
 #include<algorithm>
 #include<vector>
+#include<unordered_map>
 using namespace std;
 
 vector<string> HAINE_POSIBILE {"Pantaloni", "Rochie", "Camasa", "Palton", "Geaca", "Costum"};
@@ -8,6 +9,16 @@ vector<string> MASINI_POSIBILE {"Spalat", "Stors", "Uscat", "Calcat"};
 int N_HAINE = 0;
 int N_MASINI = 0;
 const bool MASINILE_PORNESC_NUMAI_CAND_SUNT_PE_JUMATATE_PLINE = 0;
+const bool PRETTY_LOGS = false;
+
+unordered_map<int, int> haine_ramase_clientului;
+
+class operatiune{
+public:
+    double timp_start;
+    double timp_sfarsit;
+    string tip_operatiune;
+};
 
 class haina{
 public:
@@ -35,6 +46,10 @@ public:
     bool este_stoarsa = false;
     bool este_uscata = false;
     bool este_calcata = false;
+
+    vector<operatiune> istoric_operatiuni;
+    double detergent_utilizat;
+    int id_client;
 
     /// ===============
     /// === Methods ===
@@ -81,6 +96,15 @@ public:
         cout<<"Uscata:  "<<este_uscata<<"\n";
         cout<<"Calcata: "<<este_calcata<<"\n";
         cout<<"\n";
+    }
+
+    void afiseaza_raport_final(){
+        double timp_total = 0;
+        double detergent = detergent_utilizat;
+        for(auto &op : istoric_operatiuni)
+            timp_total += op.timp_sfarsit - op.timp_start;
+
+        cout<<"Haina `"<<nume<<"` aferenta clientului cu id-ul "<<id_client<<" a petrecut "<<int(timp_total*100)/60/100.0<<" minute in masini. A fost utilizata o cantitate de "<<detergent<<"g de detergent.\n";
     }
 };
 
@@ -132,7 +156,7 @@ public:
         temperatura = temp;
     }
 
-    bool spala(haina H){
+    bool spala(haina &H){
         /// Verifica daca poate spala
         if(tip_masina != "Spalat"){
             //cout<<"Aceasta masina nu poate spala!\n";
@@ -170,6 +194,7 @@ public:
             detergent_utilizat = CANTITATE_FIXA_DE_DETERGENT * 2;
         else
             detergent_utilizat = 100 * H.greutate;
+        H.detergent_utilizat = detergent_utilizat;
 
         bool pot_adauga_in_masina = true;
         for(auto &ptr_h : haine_in_masina){
@@ -242,7 +267,7 @@ public:
         else throw runtime_error("Tipul masinii nu este recunoscut!");
     }
 
-    bool masina_poate_efectua_operatia_acestui_tip_de_masina(string tip_masina, haina H){
+    bool masina_poate_efectua_operatia_acestui_tip_de_masina(string tip_masina, haina &H){
         if(tip_masina == "Spalat") return spala(H);
         else if(tip_masina == "Stors") return stoarce(H);
         else if(tip_masina == "Uscat") return usuca(H);
@@ -300,15 +325,34 @@ public:
         este_pornita = false;
     }
 
-    void scoate_hainele_din_masina(){
+    void scoate_hainele_din_masina(vector<haina> haine){
         for(auto &ptr_h : haine_in_masina){
             if(tip_masina == "Spalat") ptr_h->este_spalata = true;
             else if(tip_masina == "Stors") ptr_h->este_stoarsa = true;
             else if(tip_masina == "Uscat") ptr_h->este_uscata = true;
-            else if(tip_masina == "Calcat") ptr_h->este_calcata = true;
+            else if(tip_masina == "Calcat")
+            {
+                ptr_h->este_calcata = true;
+
+                --haine_ramase_clientului[ptr_h->id_client];
+
+                if(haine_ramase_clientului[ptr_h->id_client] == 0){ /// S-au spalat toate hainele clientului
+                    for(auto &h : haine) /// Iau toate hainele
+                        if(h.id_client == ptr_h->id_client) /// Daca haina apartine clientului
+                            h.afiseaza_raport_final(); /// Afisez haina
+                }
+            }
             else throw runtime_error("Tipul masinii nu este recunoscut!");
+
+            operatiune operatiune_curenta;
+            operatiune_curenta.tip_operatiune = tip_masina;
+            operatiune_curenta.timp_start = timp_start_functionare;
+            operatiune_curenta.timp_sfarsit = timp_sfarsit_functionare;
+            ptr_h->istoric_operatiuni.push_back(operatiune_curenta);
+
             ptr_h->haina_se_curata_acum = false;
-            cout<<"Haina "<<ptr_h->nume<<" a fost spalata / stoarsa / uscata / calcata\n";
+            if(PRETTY_LOGS)
+                cout<<"Haina "<<ptr_h->nume<<" a fost spalata / stoarsa / uscata / calcata\n";
         }
         haine_in_masina.clear();
     }
@@ -359,10 +403,11 @@ void citeste_haine(vector <haina> &haine){
 
             for(int i=0; i<cantitate; ++i){
                 haina H(nume, greutate, culoare=="inchisa");
+                H.id_client = id;
                 haine.push_back(H);
             }
 
-            // leaga haina de client...
+            ++haine_ramase_clientului[id];
         }
         else break;
     }
@@ -380,7 +425,8 @@ void plaseaza_haine_in_masini(vector<masina> &masini, vector<haina> &haine, int 
             else if(!haina_curenta.este_calcata) tip_masina_dorit = "Calcat";
             else throw runtime_error("O haina dubioasa incearca sa fie spalata...");
 
-            cout<<"Caut o masina pentru "<<tip_masina_dorit<<"...\n";
+            if(PRETTY_LOGS)
+                cout<<"Caut o masina pentru "<<tip_masina_dorit<<"...\n";
 
             for(auto &masina_curenta : masini) /// Iau fiecare masina
             {
@@ -389,7 +435,7 @@ void plaseaza_haine_in_masini(vector<masina> &masini, vector<haina> &haine, int 
                 {
                     //cout<<"Masina poate fi folosita!\n";
                     if(masina_curenta.timp_sfarsit_functionare < timp && masina_curenta.haina_are_loc_in_masina(haina_curenta)){ /// Masina este disponibila
-                        cout<<"Am adaugat o haina de tip "<<haina_curenta.nume<<" in masina de tip "<<masina_curenta.tip_masina<<"\n";
+                        cout<<"Am adaugat o haina de tip "<<haina_curenta.nume<<" intr-o masina de tip "<<masina_curenta.tip_masina<<"\n";
                         masina_curenta.adauga_haina(haina_curenta);
                     }
                 }
@@ -398,13 +444,14 @@ void plaseaza_haine_in_masini(vector<masina> &masini, vector<haina> &haine, int 
     }
 }
 
-void scoate_haine_din_masini(vector<masina> &masini, int timp){
+void scoate_haine_din_masini(vector<masina> &masini, vector<haina> haine, int timp){
     for(auto &masina_curenta : masini){
-        cout<<"Incerc sa opresc o masina de tip "<<masina_curenta.tip_masina<<": timp = "<<timp<<", timp_sfarsit = "<<masina_curenta.timp_sfarsit_functionare<<", masina_este_pornita = "<<masina_curenta.este_pornita<<"\n";
+        if(PRETTY_LOGS)
+            cout<<"Incerc sa opresc o masina de tip "<<masina_curenta.tip_masina<<": timp = "<<timp<<", timp_sfarsit = "<<masina_curenta.timp_sfarsit_functionare<<", masina_este_pornita = "<<masina_curenta.este_pornita<<"\n";
         if(masina_curenta.timp_sfarsit_functionare < timp && masina_curenta.este_pornita){
             //cout<<"Scot ceva dintr-o masina de tip "<<masina_curenta.tip_masina<<", timp_sfarsit = "<<masina_curenta.timp_sfarsit_functionare<<"\n";
             masina_curenta.opreste_masina();
-            masina_curenta.scoate_hainele_din_masina();
+            masina_curenta.scoate_hainele_din_masina(haine);
         }
     }
 }
@@ -440,9 +487,11 @@ int main()
     /// Solve
     citeste_haine(haine);
     for(int timp_secunda = 0; timp_secunda <= 10000; timp_secunda += 200){
-        cout<<"-------- Ciclu nou de spalare --------\n";
-        scoate_haine_din_masini(masini, timp_secunda);
-        for(auto &h : haine) h.status();
+        if(PRETTY_LOGS)
+            cout<<"-------- Ciclu nou de spalare --------\n";
+        scoate_haine_din_masini(masini, haine, timp_secunda);
+        if(PRETTY_LOGS)
+            for(auto &h : haine) h.status();
         plaseaza_haine_in_masini(masini, haine, timp_secunda);
         porneste_masinile(masini, timp_secunda);
     }
