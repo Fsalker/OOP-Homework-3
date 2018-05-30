@@ -1,0 +1,6 @@
+# depslib dependency file v1.0
+1527531744 source:c:\users\andrei\documents\codeblocks projects\tema 3 poo\main.cpp
+	<iostream>
+	<algorithm>
+	<vector>
+
